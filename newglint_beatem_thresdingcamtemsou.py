@@ -73,7 +73,7 @@ def temperature(args, q2, q3):
     tem = 0
     dis = 0
     jz = 1
-    t = serial.Serial('com11', 115200)
+    t = serial.Serial('com6', 115200)
     # print(t.portstr)
     strInput = "A5 55 04 FB"  # input('enter some words:')
     while args.use_tem:  # 循环重新启动串口
@@ -97,14 +97,15 @@ def temperature(args, q2, q3):
             dis = dl + dh * 256
             q2.append(tem)
             q3.append(dis)
-        print("-----------------------------------------------温度",tem)
+        print("-----------------------------------------------温度", tem)
+        print("-----------------------------------------------距离", dis)
     #     return tem, dis, jz
     # return tem, dis, jz
 
 def tem_is_init():
     global jz
     jz = 1
-    t = serial.Serial('com11', 115200)
+    t = serial.Serial('com6', 115200)
     strInput = "A5 55 04 FE"  # input('enter some words:')
     while True:
         try:  # 如果输入不是十六进制数据--
@@ -124,7 +125,7 @@ def tem_is_init():
 def tem_init():
     global jz
     jz = 1
-    t = serial.Serial('com11', 115200)
+    t = serial.Serial('com6', 115200)
     strInput = "A5 55 04 FE"  # input('enter some words:')
     while True:
         try:  # 如果输入不是十六进制数据--
@@ -198,7 +199,7 @@ def play_sound():
         #print("结束：", fg)
         return
     def donothing():
-        print("\r-----------------------------------------------状态", fg)
+        print("-----------------------------------------------状态", fg)
         return
     while True:
         if fg == 0:
@@ -214,8 +215,8 @@ def play_sound():
             qd()
             print("-----------------------------------------------状态", fg2)
         else:
-            #donothing()
-            print("-----------------------------------------------状态", fg2)
+            donothing()
+
         # if fg == 3:
         #     msr()
         #     print("-----------------------------------------------状态", fg)
@@ -406,23 +407,32 @@ def main(args, q1, q2, q3):
                                 h = ymax - ymin
                                 w = xmax - xmin
                                 area = h * w
-                                if area >= 245*305*0.2:
+                                print('-----------------------------------------------面积', area)
+                                if area >= 245*305*0.08:# 245*305*0.08 = 5978
                                     try:
                                         tems = q2.pop()
+                                        diss = q3.pop()
                                     except:
                                         tems = 0
+                                        diss = 0
                                     #tems, diss, jz = temperature()
                                     if tems > 20:
                                         font = cv2.FONT_HERSHEY_COMPLEX_SMALL
                                         cv2.putText(frame, '{}'.format(tems), (bb[i][0]+5, bb[i][1]+35),
                                                     font,
                                                     2, (55, 255, 30), thickness=2, lineType=2)
+                                        #if 100 < diss < 500:
                                         if tems <= 37:
                                             fg = 0
                                             #print('----------------------------------main fg:',fg)
                                         else:
                                             fg = 1
                                             # print('----------------------------------main fg:',fg)
+                                        # else:
+                                        #     fg = 404
+                                else:
+                                    fg = 404
+
                             else:
                                 fg = 404
                                 #print('----------------------------------main fg:', fg)
@@ -537,7 +547,7 @@ if __name__ == "__main__":
     args.record_unknow = False
     args.beauty = True  # if open beauty out video?
     args.webcam = True  # While False,it will detect on existed video in path--test_data/video/args.testvideo
-    args.cam_num = 1
+    args.cam_num = 0
     args.testvideo = "BigDawsTv1"
     args.respath = '../result_dir/'
     args.knowperson_threshold = 0.93
@@ -550,8 +560,7 @@ if __name__ == "__main__":
         print('状态：%d -> 已校准！' % jz)
         frame_deque = deque(maxlen=10)
         tem_deque = deque(maxlen=5)
-        dis_deque = deque(maxlen=10)
-        sound_deque = deque(maxlen=4)
+        dis_deque = deque(maxlen=2)
         p1 = Thread(target=play_sound)
         p2 = Thread(target=producer, args=(args, frame_deque))
         p3 = Thread(target=temperature, args=(args, tem_deque, dis_deque))
@@ -567,13 +576,11 @@ if __name__ == "__main__":
     if jz == 1:
         print('状态：%d -> 未校准！' % jz)
         print('请将人脸靠近测温模块40cm以内，并保持10s！')
-        playsound('../sound/jiaozhun.wav')
         tem_init()
         print('已校准！！！')
         frame_deque = deque(maxlen=10)
         tem_deque = deque(maxlen=5)
-        dis_deque = deque(maxlen=10)
-        sound_deque = deque(maxlen=4)
+        dis_deque = deque(maxlen=2)
         p1 = Thread(target=play_sound)
         p2 = Thread(target=producer, args=(args, frame_deque))
         p3 = Thread(target=temperature, args=(args, tem_deque, dis_deque))
