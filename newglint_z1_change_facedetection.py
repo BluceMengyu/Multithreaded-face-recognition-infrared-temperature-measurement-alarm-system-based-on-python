@@ -3,6 +3,7 @@ import collections
 import os
 import pickle
 import time
+import random
 from collections import deque
 from threading import Thread
 
@@ -19,6 +20,8 @@ from align2.utils.anchor_generator import generate_anchors
 from align2.utils.nms import single_class_non_max_suppression
 from playsound import playsound
 
+# people_name = 'people_name_{}'.format(time.strftime('%Y_%m_%d'))
+# print('name4', people_name)
 people_name = []
 sess2, graph = load_tf_model('align2/models/face_mask_detection.pb')
 
@@ -35,6 +38,11 @@ anchors = generate_anchors(feature_map_sizes, anchor_sizes, anchor_ratios)
 anchors_exp = np.expand_dims(anchors, axis=0)
 # Mask recongnition lamble
 id2class = {0: 'Mask', 1: 'NoMask'}
+
+
+def create_dir_not_exist(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 
 # 美颜函数
@@ -61,12 +69,15 @@ def beautiful(img):
 
 # 签到函数
 def signin(name):
-    if name not in people_name:
-        f = open('../result_dir/sign_in_table.txt', 'a')
-        people = name + ' ' + str(time.strftime('%Y-%m-%d_%H-%M-%S')) + '\n'
+    name_day = name + str('{}'.format(time.strftime('%Y%m%d')))
+    # print('name_day: ', name_day)
+    if name_day not in people_name:
+        f = open('../result_dir/sign_in_{}.txt'.format(time.strftime('%Y-%m-%d')), 'a')
+        people = name + ' ' + str(time.strftime('%Y-%m-%d_%H:%M:%S')) + '\n'
         f.write(people)
         f.close()
-        people_name.append(name)
+        people_name.append(name_day)
+        # print('people_name:', people_name)
         print('****------------ %s ------------****已签到!\n' % name)
 
 
@@ -80,39 +91,91 @@ def cv2ImgAddText(img, text, left, top, text_color, text_size):
     return cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
 
 
-# 测温线程
+"""
+以重复发送查询体温码的方式
+"""
+# # 测温线程1
+# def temperature(args, q2, q3):
+#     tem = 0
+#     dis = 0
+#     # jz = 1
+#     t = serial.Serial('com6', 115200)
+#     # print(t.portstr)
+#     strInput = "A5 55 04 FB"  # input('enter some words:')
+#     while args.use_tem:  # 循环重新启动串口
+#         print('temwork:', temwork)
+#         # start = time.time()
+#         if temwork == 1:
+#             try:  # 如果输入不是十六进制数据--
+#                 t.write(bytes.fromhex(strInput))
+#             except:  # --则将其作为字符串输出
+#                 t.write(bytes(strInput, encoding='utf-8'))
+#             time.sleep(0.0005)  # sleep() 与 inWaiting() 最好配对使用
+#             num = t.inWaiting()
+#             # end = time.time()
+#             # print("use times:",end-start)
+#             if num:
+#                 data = str(binascii.b2a_hex(t.read(num)))[2:-1]  # 十六进制显示方法2
+#                 # print(data)
+#                 tl = int(data[4:6], 16)
+#                 th = int(data[6:8], 16)
+#                 dl = int(data[8:10], 16)
+#                 dh = int(data[10:12], 16)
+#                 # jz = int(data[12:14], 16)
+#                 tem = float((th * 256 + tl) / 100)
+#                 dis = dl + dh * 256
+#                 q2.append(tem)
+#                 q3.append(dis)
+#             print("-----------------------------------------------温度", tem)
+#             print("-----------------------------------------------距离", dis)
+
+
+"""
+以设置自动上报体温的模式，模组每隔300ms自动发送一次数据包到上位机
+"""
+
+
+# 测温线程2
 def temperature(args, q2, q3):
     tem = 0
     dis = 0
-    # jz = 1
     t = serial.Serial('com6', 115200)
     # print(t.portstr)
-    strInput = "A5 55 04 FB"  # input('enter some words:')
+    strInput = "A5 55 03 02 FD"  # 设置模块的上报模式为02时为自动重复上报体温，01时为检测到人体温度，主动上报一次
+    try:  # 如果输入不是十六进制数据--
+        t.write(bytes.fromhex(strInput))
+    except:  # --则将其作为字符串输出
+        t.write(bytes(strInput, encoding='utf-8'))
     while args.use_tem:  # 循环重新启动串口
-        start = time.time()
-        try:  # 如果输入不是十六进制数据--
-            n = t.write(bytes.fromhex(strInput))
-        except:  # --则将其作为字符串输出
-            n = t.write(bytes(strInput, encoding='utf-8'))
-        # print(n)
-        time.sleep(0.0005)  # sleep() 与 inWaiting() 最好配对使用
-        num = t.inWaiting()
-        end = time.time()
-        # print("use times:",end-start)
-        if num:
-            data = str(binascii.b2a_hex(t.read(num)))[2:-1]  # 十六进制显示方法2
-            # print(data)
-            tl = int(data[4:6], 16)
-            th = int(data[6:8], 16)
-            dl = int(data[8:10], 16)
-            dh = int(data[10:12], 16)
-            # jz = int(data[12:14], 16)
-            tem = float((th * 256 + tl) / 100)
-            dis = dl + dh * 256
-            q2.append(tem)
-            q3.append(dis)
-        print("-----------------------------------------------温度", tem)
-        print("-----------------------------------------------距离", dis)
+        print('\rtemwork :', temwork, end="", flush=True)
+        # start = time.time()
+        # time.sleep(0.000000001)
+        if temwork == 1:
+            num = t.inWaiting()
+            # end = time.time()
+            # print("use times:",end-start)
+            if num:
+                data = str(binascii.b2a_hex(t.read(num)))[2:-1]  # 十六进制显示方法2
+                # print(data)
+                try:
+                    tl = int(data[4:6], 16)
+                    th = int(data[6:8], 16)
+                    dl = int(data[8:10], 16)
+                    dh = int(data[10:12], 16)
+                    # jz = int(data[12:14], 16)
+                except:
+                    tl = 0
+                    th = 0
+                    dl = 0
+                    dh = 0
+                    print("error :空值异常")
+                tem = float((th * 256 + tl) / 100)
+                dis = dl + dh * 256
+                q2.append(tem)
+                # print('q2: ', q2)
+                q3.append(dis)
+            # print("-----------------------------------------------温度", tem)
+            # print("-----------------------------------------------距离", dis)
 
 
 # 温度初始化判断函数
@@ -190,14 +253,14 @@ def producer(args, q1):
         if video_capture.isOpened():
             ret, img = video_capture.read()
             w = img.shape[1]
-            xmin = int(w/2-240)
-            xmax = int(w/2+240)
+            xmin = int(w / 2 - 240)
+            xmax = int(w / 2 + 240)
             img = img[:, xmin:xmax]
-            #print(xmin, xmax)
-            #print("img_raw:", img.shape)  # 原始输入图像的尺寸（h, w, c）= (480, 640, 3)
+            # print(xmin, xmax)
+            # print("img_raw:", img.shape)  # 原始输入图像的尺寸（h, w, c）= (480, 640, 3)
             q1.append(img)
-            #cv2.imshow('img_raw',img)
-            print("-----------------------------------------------视频读取", ret)
+            # cv2.imshow('img_raw',img)
+            # print("-----------------------------------------------视频读取", ret)
             if cv2.waitKey(1) & 0xff == 27:
                 print("-----------------------------------------------视频结束")
                 break
@@ -245,23 +308,26 @@ def play_sound():
     def start_voice():
         if fg == 0:
             zc()
-            print("-----------------------------------------------状态", fg)  # 0
+            # print("-----------------------------------------------状态", fg)  # 0
         elif fg == 1:
             gw()
-            print("-----------------------------------------------状态", fg)  # 1
+            gw()
+            gw()
+            # print("-----------------------------------------------状态", fg)  # 1
         else:
-            donothing()  # 404
+            time.sleep(0.000000001)  # donothing()  # 404
 
         if fg2 == 2:
             qd()
-            print("-----------------------------------------------状态", fg2)  # 2
+            # print("-----------------------------------------------状态", fg2)  # 2
         else:
-            print("-----------------------------------------------状态", fg2)  # 406
+            time.sleep(
+                0.0000000001)  # donothing()  # print("-----------------------------------------------状态", fg2)  # 406
 
     while True:
         if fg3 == 3:
             mask()
-            print("-----------------------------------------------状态", fg3)  # 3
+            # print("-----------------------------------------------状态", fg3)  # 3
             start_voice()
         else:
             start_voice()
@@ -336,11 +402,11 @@ def detect_face(image, conf_thresh=0.5,
 # 人脸识别红外报警系统主线程
 def main(args, q1, q2, q3):
     input_image_size = 160
-    global fg, fg2, fg3, fg4
+    global fg, fg2, fg3, temwork
     fg = 404
     fg2 = 405
     fg3 = 406
-    fg4 = 407
+    temwork = 0
 
     # comment out these lines if you do not want video recording
     # USE FOR RECORDING VIDEO
@@ -349,7 +415,7 @@ def main(args, q1, q2, q3):
     # Get the path of the classifier and load it
     project_root_folder = os.path.join(os.path.abspath(__file__), "..\\..")
     # classifier_path = project_root_folder + "\\trained_classifier\\our_newglint_classifier_512_201028.pkl"  # 512维facenet人脸识别模型
-    classifier_path = project_root_folder + "\\trained_classifier\\our_newglint_classifier_128_201028.pkl"  # 128维facenet人脸识别模型
+    classifier_path = project_root_folder + "\\trained_classifier\\our_newglint_classifier_128_201029-5.pkl"  # 128维facenet人脸识别模型
     # print(classifier_path)
 
     with open(classifier_path, 'rb') as f:
@@ -382,22 +448,23 @@ def main(args, q1, q2, q3):
                 height = frame.shape[0]
                 width = frame.shape[1]
                 break
-
-            video_recording = cv2.VideoWriter(args.respath + '/res_video/output2.avi', fourcc, 10,
-                                              (width, height))
+            video_recording = cv2.VideoWriter(
+                args.respath + '/res_video/output_{}.avi'.format(time.strftime('%Y-%m-%d_%H-%M-%S')),
+                fourcc, 10, (width, height))
             total_frames_passed = 0
             unknowpeople = 0
             knowpeople = 0
 
-            # 循环读取缓存序列中的时评帧
+            # 循环读取缓存序列中的视频帧
             while True:
+                # time.sleep(0.05)
                 try:
                     if len(q1) == 0:
                         continue
                     frame = q1.pop()
                     h = frame.shape[0]
                     w = frame.shape[1]
-                    #print(h, w)
+                    # print(h, w)
                     if args.flip == True:
                         frame = cv2.flip(frame, 1)
                 except Exception as e:
@@ -422,17 +489,18 @@ def main(args, q1, q2, q3):
                 faces_found = len(bounding_boxes)
 
                 ## 识别框
-                windowname = "人脸测温框！"
-                xmin = int(w/2-120)
-                ymin = int(h/2-180)
-                xmax = int(w/2+120)
-                ymax = int(h/2+120)
-                frame2 = cv2ImgAddText(frame, windowname, xmin+38, ymin-80, (155, 0, 0), 25)
-                cv2.rectangle(frame2, (xmin, ymin-30), (xmax, ymax), (165, 245, 25), 1)
-                window_area = (xmax-xmin)*(ymax-ymin+30)
+                windowname = "测温请靠近！"
+                xmin = int(w / 2 - 120)
+                ymin = int(h / 2 - 180)
+                xmax = int(w / 2 + 120)
+                ymax = int(h / 2 + 120)
+                frame2 = cv2ImgAddText(frame, windowname, xmin + 38, ymin - 80, (155, 0, 0), 25)
+                cv2.rectangle(frame2, (xmin, ymin - 30), (xmax, ymax), (165, 245, 25), 1)
+                window_area = (xmax - xmin) * (ymax - ymin + 30)
 
                 det = bounding_boxes
                 if faces_found > 0:
+                    temwork = 1
                     bb = np.zeros((faces_found, 4), dtype=np.int32)
                     for i in range(faces_found):
                         bb[i][0] = det[i][2]
@@ -457,7 +525,7 @@ def main(args, q1, q2, q3):
 
                         # inner exception
                         if bb[i][0] <= 0 or bb[i][1] <= 0 or bb[i][2] >= len(frame[0]) or bb[i][3] >= len(frame):
-                            print('face is inner of range!')
+                            # print('face is inner of range!')
                             continue
 
                         cropped = frame[bb[i][1]:bb[i][3], bb[i][0]:bb[i][2], :]  # 这里是把检测到的人脸进行裁减出来
@@ -474,16 +542,16 @@ def main(args, q1, q2, q3):
                         # print(predictions)
                         pre_end = time.time()
                         # print("predict face: ", pre_end-pre_start)
-                        best_class_indices = np.argmax(predictions, axis=1)
+                        best_class_indices = np.argmax(predictions, axis=1)  # 按行比较数组的大小，返回最大数的索引
                         person_id = best_class_indices[0]
                         # print(predictions[0][x])
                         best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
                         best_name = class_names[best_class_indices[0]]
-                        print("Name_all: {}, Probability: {}".format(best_name, best_class_probabilities))
+                        # print("Name_all: {}, Probability: {}".format(best_name, best_class_probabilities))
 
                         # 这里是找到识别区域中最大的脸，进行测温
                         if args.use_tem == True:
-                            if bb[i][0] > xmin and bb[i][2] < xmax and bb[i][1] > ymin and bb[i][3] < ymax:
+                            if bb[i][0] > xmin - 80 and bb[i][2] < xmax + 80 and bb[i][1] > ymin - 80 and bb[i][3] < ymax + 80:
                                 box_xmin = bb[i][0].astype(int)
                                 box_xmax = bb[i][2].astype(int)
                                 box_ymin = bb[i][1].astype(int)
@@ -491,36 +559,44 @@ def main(args, q1, q2, q3):
                                 h = box_ymax - box_ymin
                                 w = box_xmax - box_xmin
                                 area = h * w
-                                print('-----------------------------------------------面积', area)
-                                fg4 = 4
-                                if area >= window_area * 0.25:
+                                # print('-----------------------------------------------面积', area)
+                                if area >= window_area * 0.2:
                                     try:
                                         tems = q2.pop()
                                         diss = q3.pop()
                                     except:
-                                        tems = 0
-                                        diss = 0
+                                        if len(q2) == 0:
+                                            tems = tems
+                                        if len(q3) == 0:
+                                            diss = diss
+                                        # tems = 0  # round(random.uniform(36.1, 36.5), 1)
                                     # tems, diss, jz = temperature()
                                     if tems > 20:
                                         font = cv2.FONT_HERSHEY_COMPLEX_SMALL
                                         cv2.putText(frame2, '{}'.format(tems), (bb[i][0] + 5, bb[i][1] + 30),
                                                     font,
                                                     2, (55, 255, 30), thickness=2, lineType=1)
-                                        if 100 < diss < 650:
+                                        if 100 < diss < 900:
                                             if tems <= 37:
                                                 fg = 0
                                                 # print('----------------------------------main fg:',fg)
+                                                create_dir_not_exist(args.respath + "/high_temperature")
                                             else:
+                                                cv2.putText(frame2, '{}'.format(tems), (bb[i][0] + 5, bb[i][1] + 30),
+                                                            font,
+                                                            2, (55, 30, 255), thickness=2, lineType=1)
                                                 fg = 1
+                                                high_tem_time = str(time.strftime('%Y-%m-%d_%H-%M-%S'))
+                                                cv2.imwrite(args.respath + "/high_temperature/" + high_tem_time + ".jpg",
+                                                            frame2)
                                                 # print('----------------------------------main fg:',fg)
                                         else:
                                             fg = 404
                                 else:
-                                    fg = 404
+                                    pass  # fg = 404
 
                             else:
                                 fg = 404
-                                fg4 = 407
                                 # print('----------------------------------main fg:', fg)
 
                         # 在检测框上标注是别人id及score
@@ -538,7 +614,7 @@ def main(args, q1, q2, q3):
                             # cv2.rectangle(frame, (bb[i][0], bb[i][1]), (bb[i][2], bb[i][3]), (0, 255, 0),
                             #               2)  # boxing face
                             knowpeople += 1
-                            print("Name_True_rec: {}, Probability: {}".format(best_name, best_class_probabilities))
+                            # print("Name_True_rec: {}, Probability: {}".format(best_name, best_class_probabilities))
                             text_xmin = bb[i][0]
                             text_y = bb[i][3] + 20
                             text_ymax = bb[i][3] + 30
@@ -557,18 +633,21 @@ def main(args, q1, q2, q3):
                             # 设置签到门槛，确保不错误识别
                             if best_class_probabilities > 0.95:
                                 signin(class_names[best_class_indices[0]])
-                                if bb[i][0] > 180 and bb[i][2] < 435 and bb[i][1] > 70 and bb[i][3] < 408:
+                                if bb[i][0] > xmin - 80 and bb[i][2] < xmax + 80 and bb[i][1] > ymin - 80 and bb[i][
+                                    3] < ymax + 80:
                                     fg2 = 2
                                     # print('----------------------------------main fg:', fg)
                                 else:
                                     fg2 = 405
                                     # print('----------------------------------main fg:', fg)
+                            else:
+                                fg2 = 405
+                                # print('----------------------------------main fg:', fg)
 
                         # 进行陌生人判断
                         elif best_class_probabilities < args.unknowperson_threshold:  # 0.6:
                             # cv2.rectangle(frame, (bb[i][0], bb[i][1]), (bb[i][2], bb[i][3]), (0, 255, 0),
                             #               2)  # boxing face
-
                             # 这里对unknow进行干扰过滤，防止误触发
                             unknowpeople += 1  # 这行和下五行的可行性待验证！！！
                             if knowpeople == 20:
@@ -583,9 +662,11 @@ def main(args, q1, q2, q3):
                                 cv2.putText(frame2, 'Unknow', (text_x, text_y),
                                             cv2.FONT_HERSHEY_COMPLEX_SMALL,
                                             0.8, (0, 0, 200), thickness=1, lineType=2)
-                                print("Name_unknow_rec: unknow, Probability: {}".format(best_class_probabilities))
+                                # print("Name_unknow_rec: unknow, Probability: {}".format(best_class_probabilities))
                                 unknowpeople = 0
                                 # 陌生人脸帧留档
+                                create_dir_not_exist(args.respath + "/stranger")
+                                create_dir_not_exist(args.respath + "/stranger_with_box")
                                 if args.record_unknow == True:
                                     for x in range(20):
                                         if not x % 10 == 0:
@@ -593,13 +674,18 @@ def main(args, q1, q2, q3):
                                         if best_class_probabilities < args.stranger_threshold:  # 0.5:
                                             strange_in_time = str(time.strftime('%Y-%m-%d_%H-%M-%S'))
                                             # print(strange_in_time)
-                                            cv2.imwrite(args.respath + "/stranger/" + strange_in_time + ".jpg", frame2)
+                                            cv2.imwrite(args.respath + "/stranger/" + strange_in_time + ".jpg", frame)
+                                            cv2.imwrite(args.respath + "/stranger_with_box/" + strange_in_time + ".jpg",
+                                                        frame2)
+
                     for person, count in person_detected.items():
                         if count > 4:
-                            print("Person Detected: {}, Count: {}".format(person, count))
+                            # print("Person Detected: {}, Count: {}".format(person, count))
                             people_detected.add(person)
-                fg2 = 405
-                fg3 = 406
+                else:
+                    temwork = 0
+                    fg2 = 405
+                    fg3 = 406
                 mainwindowname = "人脸验证及测温系统"
                 frame2 = cv2ImgAddText(frame2, mainwindowname, 20, 20, (255, 255, 155), 20)
 
@@ -615,7 +701,7 @@ def main(args, q1, q2, q3):
                 # #当前线程数
                 # xcs = len(threading.enumerate())
                 # print("当前线程数：{}".format(xcs))
-                print("-----------------------------------------------检测识别")
+                # print("-----------------------------------------------检测识别")
     video_recording.release()
     # video_capture.release()
     cv2.destroyAllWindows()
@@ -627,7 +713,7 @@ def run(jz):
         print('状态：%d -> 已校准！' % jz)
         frame_deque = deque(maxlen=2)
         tem_deque = deque(maxlen=20)
-        dis_deque = deque(maxlen=10)
+        dis_deque = deque(maxlen=5)
         p1 = Thread(target=play_sound)
         p2 = Thread(target=producer, args=(args, frame_deque))
         p3 = Thread(target=temperature, args=(args, tem_deque, dis_deque))
@@ -649,7 +735,7 @@ def run(jz):
         print('已校准！！！')
         frame_deque = deque(maxlen=2)
         tem_deque = deque(maxlen=20)
-        dis_deque = deque(maxlen=10)
+        dis_deque = deque(maxlen=5)
         p1 = Thread(target=play_sound)
         p2 = Thread(target=producer, args=(args, frame_deque))
         p3 = Thread(target=temperature, args=(args, tem_deque, dis_deque))
@@ -668,14 +754,14 @@ if __name__ == "__main__":
     args = lambda: None
     args.use_tem = True  # False
     args.flip = True
-    args.record = True  # if save the video? True->yes, False->no
-    args.record_unknow = False
+    args.record = False  # if save the video? True->yes, False->no
+    args.record_unknow = True
     args.beauty = True  # if open beauty out video?
-    args.webcam = False  # While False,it will detect on existed video in path--test_data/video/args.testvideo
+    args.webcam = True  # While False,it will detect on existed video in path--test_data/video/args.testvideo
     args.cam_num = 0
     args.testvideo = "BigDawsTv1"
     args.respath = '../result_dir/'
-    args.knowperson_threshold = 0.93
+    args.knowperson_threshold = 0.95
     args.unknowperson_threshold = 0.7
     args.stranger_threshold = 0.5
     args.video_speedup = 1
